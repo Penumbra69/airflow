@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -17,12 +16,13 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from collections import namedtuple
+from typing import NamedTuple
 
-from airflow.utils.db import provide_session
+from airflow.ti_deps.dep_context import DepContext
+from airflow.utils.session import provide_session
 
 
-class BaseTIDep(object):
+class BaseTIDep:
     """
     Abstract base class for dependencies that must be satisfied in order for task
     instances to run. For example, a task that can only run if a certain number of its
@@ -41,7 +41,7 @@ class BaseTIDep(object):
         pass
 
     def __eq__(self, other):
-        return type(self) == type(other)
+        return isinstance(self, type(other))
 
     def __hash__(self):
         return hash(type(self))
@@ -57,7 +57,7 @@ class BaseTIDep(object):
         """
         return getattr(self, 'NAME', self.__class__.__name__)
 
-    def _get_dep_statuses(self, ti, session, dep_context=None):
+    def _get_dep_statuses(self, ti, session, dep_context):
         """
         Abstract method that returns an iterable of TIDepStatus objects that describe
         whether the given task instance has this dependency met.
@@ -66,9 +66,9 @@ class BaseTIDep(object):
         representing if each of the passed in task's upstream tasks succeeded or not.
 
         :param ti: the task instance to get the dependency status for
-        :type ti: TaskInstance
+        :type ti: airflow.models.TaskInstance
         :param session: database session
-        :type session: Session
+        :type session: sqlalchemy.orm.session.Session
         :param dep_context: the context for which this dependency should be evaluated for
         :type dep_context: DepContext
         """
@@ -81,15 +81,12 @@ class BaseTIDep(object):
         checks for all dependencies.
 
         :param ti: the task instance to get the dependency status for
-        :type ti: TaskInstance
+        :type ti: airflow.models.TaskInstance
         :param session: database session
-        :type session: Session
+        :type session: sqlalchemy.orm.session.Session
         :param dep_context: the context for which this dependency should be evaluated for
         :type dep_context: DepContext
         """
-        # this avoids a circular dependency
-        from airflow.ti_deps.dep_context import DepContext
-
         if dep_context is None:
             dep_context = DepContext()
 
@@ -103,8 +100,7 @@ class BaseTIDep(object):
                 reason="Context specified all task dependencies should be ignored.")
             return
 
-        for dep_status in self._get_dep_statuses(ti, session, dep_context):
-            yield dep_status
+        yield from self._get_dep_statuses(ti, session, dep_context)
 
     @provide_session
     def is_met(self, ti, session, dep_context=None):
@@ -114,9 +110,9 @@ class BaseTIDep(object):
         passing.
 
         :param ti: the task instance to see if this dependency is met for
-        :type ti: TaskInstance
+        :type ti: airflow.models.TaskInstance
         :param session: database session
-        :type session: Session
+        :type session: sqlalchemy.orm.session.Session
         :param dep_context: The context this dependency is being checked under that stores
             state that can be used by this dependency.
         :type dep_context: BaseDepContext
@@ -130,9 +126,9 @@ class BaseTIDep(object):
         Returns an iterable of strings that explain why this dependency wasn't met.
 
         :param ti: the task instance to see if this dependency is met for
-        :type ti: TaskInstance
+        :type ti: airflow.models.TaskInstance
         :param session: database session
-        :type session: Session
+        :type session: sqlalchemy.orm.session.Session
         :param dep_context: The context this dependency is being checked under that stores
             state that can be used by this dependency.
         :type dep_context: BaseDepContext
@@ -148,6 +144,11 @@ class BaseTIDep(object):
         return TIDepStatus(self.name, True, reason)
 
 
-# Dependency status for a specific task instance indicating whether or not the task
-# instance passed the dependency.
-TIDepStatus = namedtuple('TIDepStatus', ['dep_name', 'passed', 'reason'])
+class TIDepStatus(NamedTuple):
+    """
+    Dependency status for a specific task instance indicating whether or not the task
+    instance passed the dependency.
+    """
+    dep_name: str
+    passed: bool
+    reason: str

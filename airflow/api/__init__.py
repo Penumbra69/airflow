@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -16,30 +15,28 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
-from __future__ import print_function
-
-from airflow.exceptions import AirflowException
-from airflow import configuration as conf
+"""Authentication backend"""
+import logging
 from importlib import import_module
 
-from airflow.utils.log.logging_mixin import LoggingMixin
+from airflow.configuration import conf
+from airflow.exceptions import AirflowConfigException, AirflowException
 
-api_auth = None
-
-log = LoggingMixin().log
+log = logging.getLogger(__name__)
 
 
 def load_auth():
+    """Loads authentication backend"""
     auth_backend = 'airflow.api.auth.backend.default'
     try:
         auth_backend = conf.get("api", "auth_backend")
-    except conf.AirflowConfigException:
+    except AirflowConfigException:
         pass
 
     try:
-        global api_auth
-        api_auth = import_module(auth_backend)
+        auth_backend = import_module(auth_backend)
+        log.info("Loaded API auth backend: %s", auth_backend)
+        return auth_backend
     except ImportError as err:
         log.critical(
             "Cannot import %s for API authentication due to: %s",

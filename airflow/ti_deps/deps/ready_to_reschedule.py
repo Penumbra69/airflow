@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -17,16 +16,21 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from airflow.models.taskreschedule import TaskReschedule
 from airflow.ti_deps.deps.base_ti_dep import BaseTIDep
 from airflow.utils import timezone
-from airflow.utils.db import provide_session
+from airflow.utils.session import provide_session
 from airflow.utils.state import State
 
 
 class ReadyToRescheduleDep(BaseTIDep):
+    """
+    Determines whether a task is ready to be rescheduled.
+    """
     NAME = "Ready To Reschedule"
     IGNOREABLE = True
     IS_TASK_DEP = True
+    RESCHEDULEABLE_STATES = {State.UP_FOR_RESCHEDULE, State.NONE}
 
     @provide_session
     def _get_dep_statuses(self, ti, session, dep_context):
@@ -43,21 +47,23 @@ class ReadyToRescheduleDep(BaseTIDep):
                        "permitted.")
             return
 
-        if ti.state != State.NONE:
+        if ti.state not in self.RESCHEDULEABLE_STATES:
             yield self._passing_status(
-                reason="The task instance is not in NONE state.")
+                reason="The task instance is not in State_UP_FOR_RESCHEDULE or NONE state.")
             return
 
-        # Lazy import to avoid circular dependency
-        from airflow.models import TaskReschedule
-        task_reschedules = TaskReschedule.find_for_task_instance(task_instance=ti)
-        if not task_reschedules:
+        task_reschedule = (
+            TaskReschedule.query_for_task_instance(task_instance=ti, descending=True, session=session)
+            .with_entities(TaskReschedule.reschedule_date)
+            .first()
+        )
+        if not task_reschedule:
             yield self._passing_status(
                 reason="There is no reschedule request for this task instance.")
             return
 
         now = timezone.utcnow()
-        next_reschedule_date = task_reschedules[-1].reschedule_date
+        next_reschedule_date = task_reschedule.reschedule_date
         if now >= next_reschedule_date:
             yield self._passing_status(
                 reason="Task instance id ready for reschedule.")

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -17,24 +16,21 @@
 # specific language governing permissions and limitations
 # under the License.
 #
+
+import inspect
 import os
-
-# inspect.signature is only available in Python 3. funcsigs.signature is
-# a backport.
-try:
-    import inspect
-    signature = inspect.signature
-except AttributeError:
-    import funcsigs
-    signature = funcsigs.signature
-
 from copy import copy
 from functools import wraps
+from typing import Any, Callable, Dict, TypeVar, cast
 
 from airflow.exceptions import AirflowException
 
+signature = inspect.signature
 
-def apply_defaults(func):
+T = TypeVar('T', bound=Callable)  # pylint: disable=invalid-name
+
+
+def apply_defaults(func: T) -> T:
     """
     Function decorator that Looks for an argument named "default_args", and
     fills the unspecified arguments from it.
@@ -45,7 +41,6 @@ def apply_defaults(func):
     specific information about the missing arguments.
     """
 
-    import airflow.models
     # Cache inspect.signature for the wrapper closure to avoid calling it
     # at every decorated invocation. This is separate sig_cache created
     # per decoration, i.e. each function decorated using apply_defaults will
@@ -54,25 +49,24 @@ def apply_defaults(func):
     non_optional_args = {
         name for (name, param) in sig_cache.parameters.items()
         if param.default == param.empty and
-        param.name != 'self' and
-        param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)}
+           param.name != 'self' and
+           param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)}
 
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        from airflow.models.dag import DagContext
         if len(args) > 1:
             raise AirflowException(
                 "Use keyword arguments when initializing operators")
-        dag_args = {}
-        dag_params = {}
+        dag_args: Dict[str, Any] = {}
+        dag_params: Dict[str, Any] = {}
 
-        dag = kwargs.get('dag', None) or airflow.models._CONTEXT_MANAGER_DAG
+        dag = kwargs.get('dag', None) or DagContext.get_current_dag()
         if dag:
             dag_args = copy(dag.default_args) or {}
             dag_params = copy(dag.params) or {}
 
-        params = {}
-        if 'params' in kwargs:
-            params = kwargs['params']
+        params = kwargs.get('params', {}) or {}
         dag_params.update(params)
 
         default_args = {}
@@ -88,6 +82,7 @@ def apply_defaults(func):
         for arg in sig_cache.parameters:
             if arg not in kwargs and arg in default_args:
                 kwargs[arg] = default_args[arg]
+
         missing_args = list(non_optional_args - set(kwargs))
         if missing_args:
             msg = "Argument {0} is required".format(missing_args)
@@ -97,7 +92,8 @@ def apply_defaults(func):
 
         result = func(*args, **kwargs)
         return result
-    return wrapper
+    return cast(T, wrapper)
+
 
 if 'BUILDING_AIRFLOW_DOCS' in os.environ:
     # flake8: noqa: F811

@@ -24,9 +24,8 @@ Create Date: 2016-09-11 13:39:18.592072
 
 """
 
-from alembic import op
+from alembic import context, op
 from sqlalchemy.dialects import mysql
-from alembic import context
 
 # revision identifiers, used by Alembic.
 revision = '4addfa1236f1'
@@ -35,7 +34,7 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade():
+def upgrade():   # noqa: D103
     if context.config.get_main_option('sqlalchemy.url').startswith('mysql'):
         op.alter_column(table_name='dag', column_name='last_scheduler_run',
                         type_=mysql.DATETIME(fsp=6))
@@ -62,11 +61,6 @@ def upgrade():
         op.alter_column(table_name='job', column_name='end_date',
                         type_=mysql.DATETIME(fsp=6))
         op.alter_column(table_name='job', column_name='latest_heartbeat',
-                        type_=mysql.DATETIME(fsp=6))
-
-        op.alter_column(table_name='known_event', column_name='start_date',
-                        type_=mysql.DATETIME(fsp=6))
-        op.alter_column(table_name='known_event', column_name='end_date',
                         type_=mysql.DATETIME(fsp=6))
 
         op.alter_column(table_name='log', column_name='dttm',
@@ -103,7 +97,7 @@ def upgrade():
                         type_=mysql.DATETIME(fsp=6))
 
 
-def downgrade():
+def downgrade():   # noqa: D103
     if context.config.get_main_option('sqlalchemy.url').startswith('mysql'):
         op.alter_column(table_name='dag', column_name='last_scheduler_run',
                         type_=mysql.DATETIME())
@@ -130,11 +124,6 @@ def downgrade():
         op.alter_column(table_name='job', column_name='end_date',
                         type_=mysql.DATETIME())
         op.alter_column(table_name='job', column_name='latest_heartbeat',
-                        type_=mysql.DATETIME())
-
-        op.alter_column(table_name='known_event', column_name='start_date',
-                        type_=mysql.DATETIME())
-        op.alter_column(table_name='known_event', column_name='end_date',
                         type_=mysql.DATETIME())
 
         op.alter_column(table_name='log', column_name='dttm',
